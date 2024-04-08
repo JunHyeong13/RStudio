@@ -90,11 +90,11 @@ dat <- select(dat, -date, -smv, -wip, -idle_time, -idle_men, -no_of_style_change
 dat
 
 categorical_vars <- c("quarter", "department", "day")
-for (var in categorical_vars) {
-  ggplot(dat, aes(x = !!as.name(var))) +
+for (vars in categorical_vars) {
+  ggplot(dat, aes(x = !!as.name(vars))) +
     geom_bar() +
-    labs(x = var, y = "Count") +
-    ggtitle(paste("Bar Graph of", var))
+    labs(x = vars, y = "Count") +
+    ggtitle(paste("Bar Graph of", vars))
 }
 
 # 연속형 변수를 넣어서 할당 
@@ -143,10 +143,10 @@ ks_test_normal <- ks.test(actual_productivity, "pnorm", mean = normal_fit$estima
 
 ks_test_lognormal <- ks.test(actual_productivity, "plnorm", meanlog = lognormal_fit$estimate[1], sdlog = lognormal_fit$estimate[2])
 
-# 정규 분포 값 출력 
+# 정규 분포 값 출력 || p-value : 0.885 
 ks_test_normal
 
-# 로그 정류 분포 값을 출력
+# 로그 정류 분포 값을 출력 || p-value 0.05보다 작음. 0.03
 ks_test_lognormal
 
 # 결과 값 출력. 
@@ -166,8 +166,7 @@ cat("  KS Test P-Value:", ks_test_lognormal$p.value, "\n")
 
 
 # 결론 
-# '생산성 점수'가 어떠한 분포를 따르는가 >>> 
-
+# '생산성 점수'가 어떠한 분포를 따르는가 >>> ks-test에 따라 모델의 경우 정규 분포를 따른다고 볼 수 있다. 
 
 ```
 
@@ -187,17 +186,22 @@ actual_productivity <- rnorm(1000, mean = 10, sd = 2)
 
 optimal_distribution_fit <- fitdistr(actual_productivity, "normal")
 
-# Generate a sequence of values to represent the range of observed data
+# 관측된 데이터의 범위를 나타내는 시퀀스 생성
 x <- seq(min(actual_productivity), max(actual_productivity), length.out = 100)
 
-# Compute the probability density function (PDF) of the optimal distribution
+# 최적 분포의 확률 밀도 함수(PDF) 계산
 pdf_optimal_distribution <- dnorm(x, mean = optimal_distribution_fit$estimate[1], sd = optimal_distribution_fit$estimate[2])
 
+par(mfrow = c(1,1))
 
-# Plot the histogram of actual data and the fitted distribution
-hist(actual_productivity, freq = FALSE, main = "Comparison of Actual Data and Fitted Distribution", xlab = "Productivity Score")
+# 실제 데이터 및 적합 분포의 히스토그램을 표시
+hist(actual_productivity, freq = F, col = "lightblue", main = "Comparison of Actual Data and Fitted Distribution", xlab = "Productivity Score")
 
-# 이에 대한 해석
+# Add PDF plot
+plot(x, pdf_optimal_distribution, col = "red", lwd = 2)
+
+# 결론)
+# actual_productivity와 pdf_optimal_distribution 값을 비교했을 때, 동일한 패턴을 나타내므로, 실제 데이터와 MLE를 모수로 가지는 데이터의 분포가 동일함을 나타낸다고 볼 수 있다. 
 
 ```
 
@@ -211,15 +215,16 @@ hist(actual_productivity, freq = FALSE, main = "Comparison of Actual Data and Fi
 
 ```{r no_4}
 
-library(dplyr)
+library(dplyr) 
 
-# Grouping by quarter, department, and day, and summarizing descriptive statistics for target and actual productivity scores
+# 그룹화 진행(quarter, department, and day, and summarizing descriptive statistics)
+
 grouped_data <- dat %>%
   group_by(quarter, department, day) %>%
-  summarize(
+  summarise(
     # 평균 값 도출.
-    mean_target_score = mean(targeted_productivity),
-    mean_actual_score = mean(actual_productivity),
+    mean_target_score = mean(targeted_productivity), # 당초에 목표한 생산성 점수의 평균
+    mean_actual_score = mean(actual_productivity), # 실제 생산성 점수 값의 평균. 
     # 중앙값 도출.
     median_target_score = median(targeted_productivity),
     median_actual_score = median(actual_productivity),
@@ -230,6 +235,10 @@ grouped_data <- dat %>%
 
 # 각 그룹 당 그룹화 진행 및 평균, 중앙값, 표준 편차 값 도출. 
 print(grouped_data)
+
+# 결론
+# 주차 (quarter), 부서 (department), 요일 (day) 별로 목표하는 점수 (targeted_productivity), 실제 생산성 점수 (actual_productivity)간에 평균과 편차에 차이가 있음을 확인할 수 있다. 
+#이를 통해 주차, 부서, 요일 별로 목표하는 점수, 실제 생산성에 영향을 받음을 알 수 있다. 
 
 ```
 
@@ -243,7 +252,20 @@ print(grouped_data)
 
 ```{r no_5}
 
+# 신뢰수준 0.01 (99%)
+alpha <- 0.01
 
+# test statistic를 정하고, 신뢰도 수준 파악.
+anova_result <- aov(actual_productivity~ department, data = dat)
+
+# p-value 값을 가져옴.
+# Anova test 진행. 
+anova_summary <- summary(anova_result)
+
+# 결론 
+
+# H0 : 그룹 별 생산성 점수에는 차이가 없다. 라는 가설은 기각 되며, 
+# 그룹별 생산성 점수에는 차이가 있음을 확인할 수 있다.  
 
 ```
 
@@ -256,7 +278,30 @@ print(grouped_data)
 
 ```{r no_6}
 
+# Load necessary libraries
+library(dplyr)
+library(BSDA)
+library(Hmisc) # binconf 사용하기 위해서 라이브러리 선언. 
 
+# 'department', 'targeted_productivity', 'actual_productivity' 사용
+
+# 각 부서에 대한 생성성 점수를 초과하는 비율에 차이가 있는지를 계산. 
+count_exceeding <- dat %>%
+  group_by(department) %>%
+  summarize(
+    count_exceeding = sum(actual_productivity > targeted_productivity, na.rm = TRUE),
+    total_count = n()  # 각 부서에서의 총합. 
+  )
+
+# 두 비율을 비교하기 위해서 two-sample z-test 수행. 
+test_result <- prop.test(x = count_exceeding$count_exceeding, n = count_exceeding$total_count, alternative = "two.sided")
+
+# 각 비율에서의 차이를 보기 위한 신뢰구간 계산. 
+conf_interval <- binconf(count_exceeding$count_exceeding, n = count_exceeding$total_count, method = "exact")
+
+# 테스트 결과 값과 &신뢰 수준 값 도출
+print(test_result)
+print(conf_interval)
 ```
 
 <br>
@@ -270,6 +315,22 @@ print(grouped_data)
 
 ```{r no_7}
 
+library(dplyr)
+str(dat$day)
+
+# 각 요일 별로 배치된 평균적인 인원에 대하여 계산한 값을 넣어줌. 
+avg_team_day <- dat %>%
+  group_by(day) %>%
+  summarise(avg_team = mean(team))
+
+# 평균적으로 team이 day에 따라 어떻게 나타나는지 확인. 
+avg_team_day
+
+# one-way anova 시행. (그룹 사이의 분산도와 그룹 내에서의 분산도를 비교) 
+anova_result <- aov(team ~ day, data = dat)
+
+# ANOVA summary 값을 출력함.
+summary(anova_result)
 
 ```
 
@@ -285,6 +346,36 @@ print(grouped_data)
 
 ```{r no_8}
 
+library(dplyr)
+
+# (H0)귀무가설 : 초과 근무와 성과급은 서로 연관성이 없다. 
+# (H1)대립 가설 : 초과 근무와 성과급은 서로 연관성이 있다. 
+
+#초과근무 시간과 성과급이 연관성이 있는지 가설검정.
+
+# 인센티브는 80, 초과근무는 8000 미만인 값을 고려. 
+filtered_data <- dat %>%
+  filter(incentive < 80 & over_time < 8000)
+
+# 연속형 변수로, 이산화를 진행.
+filtered_data <- filtered_data %>%
+  mutate(over_time_category = cut(over_time, breaks = 5),
+         incentives_category = cut(incentive, breaks = 5))
+
+# 연속형 테이블 생성. 
+contingency_table <- table(filtered_data$over_time_category, filtered_data$incentives_category)
+
+# 카이 검정(chi-square test) 시행. 
+chi_square_test <- chisq.test(contingency_table)
+
+# Print contingency table
+print(contingency_table)
+
+# chi-square test 결과 출력. 
+print(chi_square_test)
+
+# 결론
+# (H1)초과 근무와 성과급의 차이는 있다. 라는 결론을 내릴 수 있다. 
 
 ```
 
